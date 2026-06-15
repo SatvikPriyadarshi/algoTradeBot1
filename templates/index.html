@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quant Algo — opt_mean_rev</title>
+    <meta name="description" content="Quant Algo — opt_mean_rev M15 mean reversion live terminal and backtest.">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Background Glow Blobs -->
+    <div class="glow-blob blob-1"></div>
+    <div class="glow-blob blob-2"></div>
+    <div class="glow-blob blob-3"></div>
+
+    <div class="dashboard-container">
+        <!-- Top Navigation / Header -->
+        <header class="dashboard-header glass">
+            <div class="logo-area">
+                <span class="pulse-ring" id="heartbeat-ring"></span>
+                <div class="logo-text">
+                    <h1>QUANT <span class="highlight">ALGO</span></h1>
+                    <span class="logo-strategy" id="logo-strategy">opt_mean_rev</span>
+                </div>
+            </div>
+
+            <!-- Tab Controls -->
+            <div class="tab-controls">
+                <button class="tab-btn active" id="btn-live" onclick="switchTab('live')">
+                    <span class="tab-icon">◉</span> LIVE TERMINAL
+                </button>
+                <button class="tab-btn" id="btn-backtest" onclick="switchTab('backtest')">
+                    <span class="tab-icon">◫</span> BACKTEST LAB
+                </button>
+            </div>
+
+            <div class="status-panel">
+                <div class="status-item">
+                    <span class="label">ASSETS:</span>
+                    <span class="val" id="sym-val">Loading...</span>
+                </div>
+                <div class="status-item border-left">
+                    <span class="label">MODE:</span>
+                    <span class="val highlight" id="mode-val">DRY RUN</span>
+                </div>
+                <div class="status-item border-left">
+                    <span class="label">STRATEGY:</span>
+                    <span class="val" id="strategy-val">opt_mean_rev</span>
+                </div>
+                <div class="status-item border-left">
+                    <span class="label">MT5 STATUS:</span>
+                    <span class="status-badge" id="status-badge">DISCONNECTED</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ==================== TAB 1: LIVE TERMINAL ==================== -->
+        <main class="dashboard-grid tab-content" id="tab-live-content">
+            <!-- Left Panel -->
+            <div class="left-panel">
+                <!-- Risk & Strategy Config -->
+                <div class="card glass auth-card">
+                    <div class="card-header">
+                        <h2>Trading Configuration</h2>
+                        <span class="tag" id="config-tf-badge">M15 · OptMeanRev</span>
+                    </div>
+                    <form id="risk-config-form" class="auth-form">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="live-risk">Max Risk / Trade ($)</label>
+                                <input type="number" id="live-risk" value="50" min="1" step="1">
+                                <span class="field-hint">Lot size = risk ÷ stop distance. Margin from MT5.</span>
+                            </div>
+                        </div>
+                        <div class="account-sizing-readout" id="mt5-sizing-readout">
+                            <span>Balance: <strong id="cfg-balance">—</strong></span>
+                            <span>Free margin: <strong id="cfg-margin-free">—</strong></span>
+                            <span>Leverage: <strong id="cfg-leverage">—</strong></span>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="action-btn" id="save-risk-btn">Save Risk Settings</button>
+                        </div>
+                        <div class="connection-feedback" id="risk-config-feedback"></div>
+                        <p class="field-hint" style="margin-top:10px">
+                            MT5 auto-connects from <code>.env</code> on engine start — dashboard optional.<br>
+                            Pairs: <strong id="config-symbols">—</strong> · Mode: <strong id="config-engine-mode">—</strong>
+                        </p>
+                    </form>
+                </div>
+
+                <!-- Metrics Row -->
+                <div class="metrics-row">
+                    <div class="metric-card glass" id="balance-card">
+                        <span class="card-label">ACCOUNT BALANCE</span>
+                        <div class="value-row">
+                            <span class="currency">$</span>
+                            <span class="value" id="balance-val">—</span>
+                        </div>
+                        <div class="sub-value" id="balance-sub">Connect MT5 to sync</div>
+                    </div>
+                    <div class="metric-card glass" id="equity-card">
+                        <span class="card-label">FLOATING EQUITY</span>
+                        <div class="value-row">
+                            <span class="currency">$</span>
+                            <span class="value" id="equity-val">—</span>
+                        </div>
+                        <div class="sub-value" id="equity-sub">0.00% Floating</div>
+                    </div>
+                    <div class="metric-card glass" id="today-pnl-card">
+                        <span class="card-label">TODAY'S NET P&L</span>
+                        <div class="value-row">
+                            <span class="currency">$</span>
+                            <span class="value" id="pnl-val">0.00</span>
+                        </div>
+                        <div class="sub-value" id="pnl-sub">Active Session</div>
+                    </div>
+                </div>
+
+                <!-- Mean Reversion Bands -->
+                <div class="card glass levels-card">
+                    <div class="card-header">
+                        <h2>Bollinger Bands (MA25 ± 2σ)</h2>
+                        <span class="tag" id="levels-asset-count">0 Assets</span>
+                        <span class="tag levels-live-tag" id="levels-live-tag">—</span>
+                    </div>
+                    <div class="levels-container" id="levels-container-list">
+                        <div class="empty-levels">Connect MT5 to load band levels</div>
+                    </div>
+                </div>
+
+                <!-- Validation Pipeline -->
+                <div class="card glass pipeline-card">
+                    <div class="card-header">
+                        <h2>Strategy Validation Pipeline</h2>
+                        <span class="tag" id="live-timeframe-badge">SCANNING M15</span>
+                    </div>
+                    <div class="pipeline-container">
+                        <div class="pipeline-step" id="step-atr">
+                            <span class="pipeline-dot" id="dot-atr"></span>
+                            <div class="step-info">
+                                <h3>1. ATR Regime</h3>
+                                <p>Volatility in normal range — not dead, not explosive</p>
+                            </div>
+                        </div>
+                        <div class="pipeline-step" id="step-band">
+                            <span class="pipeline-dot" id="dot-band"></span>
+                            <div class="step-info">
+                                <h3>2. Band Cross Signal</h3>
+                                <p>Price crosses ±2σ band (oversold long / overbought short)</p>
+                            </div>
+                        </div>
+                        <div class="pipeline-step" id="step-stops">
+                            <span class="pipeline-dot" id="dot-stops"></span>
+                            <div class="step-info">
+                                <h3>3. Stops &amp; Target Set</h3>
+                                <p>SL at 2.2σ · TP at MA25 · max hold 20 bars (5h)</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calendar Heatmap -->
+                <div class="card glass calendar-card">
+                    <div class="card-header">
+                        <h2>Performance Heatmap</h2>
+                        <span class="tag">30-Day Grid</span>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid-container"></div>
+                    <div class="calendar-legend">
+                        <span class="legend-item"><span class="legend-dot loss"></span> Loss</span>
+                        <span class="legend-item"><span class="legend-dot neutral"></span> No Trade</span>
+                        <span class="legend-item"><span class="legend-dot win"></span> Profit</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel -->
+            <div class="right-panel">
+                <!-- Active Position Monitor -->
+                <div class="card glass active-trade-card" id="active-trade-panel">
+                    <div class="card-header">
+                        <h2>Active Position Monitor</h2>
+                        <span class="status-dot" id="position-active-dot"></span>
+                    </div>
+                    <div id="no-position-msg" class="empty-state">
+                        <div class="radar-box">
+                            <div class="radar-circle"></div>
+                            <div class="radar-circle circle-2"></div>
+                        </div>
+                        <p>Scanning M15 mean reversion setups...</p>
+                    </div>
+                    <div id="active-positions-container" class="positions-list"></div>
+                </div>
+
+                <!-- Trade Journal -->
+                <div class="card glass history-card journal-card">
+                    <div class="card-header">
+                        <h2>Trade Journal</h2>
+                        <div class="journal-header-actions">
+                            <span class="journal-subtitle" id="journal-account-label">Live MT5 account</span>
+                            <span class="total-badge" id="total-trades-badge">0 Trades</span>
+                            <a href="/api/trades/export" class="journal-export-btn" id="export-trades-btn" download>Export CSV</a>
+                        </div>
+                    </div>
+
+                    <div class="journal-stats-grid" id="journal-stats-grid">
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">Win Rate</span>
+                            <span class="journal-stat-value" id="js-win-rate">—</span>
+                        </div>
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">Net P&amp;L</span>
+                            <span class="journal-stat-value" id="js-net-pnl">—</span>
+                        </div>
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">Avg Duration</span>
+                            <span class="journal-stat-value" id="js-avg-duration">—</span>
+                        </div>
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">Profit Factor</span>
+                            <span class="journal-stat-value" id="js-profit-factor">—</span>
+                        </div>
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">TP / SL / Time</span>
+                            <span class="journal-stat-value" id="js-exit-mix">—</span>
+                        </div>
+                        <div class="journal-stat">
+                            <span class="journal-stat-label">Avg Hold (bars)</span>
+                            <span class="journal-stat-value" id="js-avg-bars">—</span>
+                        </div>
+                    </div>
+
+                    <div class="journal-filters">
+                        <select id="journal-filter-symbol" class="select-input journal-filter">
+                            <option value="">All symbols</option>
+                        </select>
+                        <select id="journal-filter-exit" class="select-input journal-filter">
+                            <option value="">All exits</option>
+                            <option value="TP">Take profit</option>
+                            <option value="SL">Stop loss</option>
+                            <option value="TIME">Time exit</option>
+                        </select>
+                    </div>
+
+                    <div class="table-container journal-table-wrap">
+                        <table class="history-table journal-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Opened</th>
+                                    <th>Closed</th>
+                                    <th>Duration</th>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Lots</th>
+                                    <th>Entry</th>
+                                    <th>Exit</th>
+                                    <th>Result</th>
+                                    <th>P&amp;L</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trade-history-rows">
+                                <tr><td colspan="11" class="empty-table-msg">No live MT5 trades yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ==================== TAB 2: BACKTEST LABORATORY ==================== -->
+        <main class="dashboard-grid tab-content hidden" id="tab-backtest-content">
+            <!-- Left Panel: Config -->
+            <div class="left-panel">
+                <div class="card glass backtest-config-card">
+                    <div class="card-header">
+                        <h2>Backtest Simulation Parameters</h2>
+                        <span class="tag">Historical Engine</span>
+                    </div>
+                    <form id="backtest-form" class="backtest-form">
+                        <div class="form-group">
+                            <label for="bt-symbol">Instrument / Asset</label>
+                            <select id="bt-symbol" class="select-input">
+                                <option value="GBPUSD" selected>GBPUSD (Pound / USD)</option>
+                                <option value="AUDUSD">AUDUSD (AUD / USD)</option>
+                                <option value="EURUSD">EURUSD (Euro / USD)</option>
+                                <option value="USDCAD">USDCAD (USD / CAD)</option>
+                                <option value="USDCHF">USDCHF (USD / CHF)</option>
+                                <option value="XAUUSD">XAUUSD (Gold / USD)</option>
+                            </select>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bt-timeframe">Timeframe</label>
+                                <select id="bt-timeframe" class="select-input">
+                                    <option value="M15" selected>M15 (15 Minutes)</option>
+                                    <option value="M5">M5 (5 Minutes)</option>
+                                    <option value="M1">M1 (1 Minute)</option>
+                                    <option value="H1">H1 (1 Hour)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bt-bars">Historical Candles</label>
+                                <input type="number" id="bt-bars" value="20000" min="500" max="100000">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bt-balance">Starting Balance ($)</label>
+                                <input type="number" id="bt-balance" value="1000" min="100" step="50">
+                            </div>
+                            <div class="form-group">
+                                <label for="bt-capital">Trade Capital ($)</label>
+                                <input type="number" id="bt-capital" value="500" min="10" step="10">
+                                <span class="field-hint">USD you allocate per trade (margin budget)</span>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bt-risk">Max Risk ($)</label>
+                                <input type="number" id="bt-risk" value="50" min="1" step="1">
+                                <span class="field-hint">Max loss if stop loss is hit (e.g. $50 of $500)</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="bt-leverage">Leverage</label>
+                                <input type="number" id="bt-leverage" value="100" min="1" max="1000" step="1">
+                                <span class="field-hint">Used to fit lot size inside your trade capital</span>
+                            </div>
+                        </div>
+                        <p class="field-hint" style="margin:0">
+                            Uses <strong>opt_mean_rev</strong> from <code>.env</code> — identical to live dry-run on <code>M15</code>.
+                            Risk fields default from your saved config above.
+                        </p>
+                        <button type="submit" class="action-btn bt-run-btn" id="run-backtest-btn">
+                            <span id="bt-btn-text">Run Backtest Simulation</span>
+                        </button>
+                        <div class="backtest-feedback" id="bt-feedback"></div>
+                    </form>
+                </div>
+
+                <!-- Backtest Summary Metrics -->
+                <div class="metrics-row" id="backtest-summary-metrics">
+                    <div class="metric-card glass">
+                        <span class="card-label">NET PROFIT / LOSS</span>
+                        <div class="value-row">
+                            <span class="currency">$</span>
+                            <span class="value" id="bt-profit-val">0.00</span>
+                        </div>
+                        <div class="sub-value" id="bt-return-pct">+0.00% Net</div>
+                    </div>
+                    <div class="metric-card glass">
+                        <span class="card-label">WIN RATE</span>
+                        <div class="value-row">
+                            <span class="value" id="bt-winrate-val">0.00</span>
+                            <span class="currency">%</span>
+                        </div>
+                        <div class="sub-value" id="bt-trades-count">0 Closed Trades</div>
+                    </div>
+                    <div class="metric-card glass">
+                        <span class="card-label">PROFIT FACTOR / DD</span>
+                        <div class="value-row">
+                            <span class="value" id="bt-factor-val">0.00</span>
+                        </div>
+                        <div class="sub-value" id="bt-drawdown-val">Max DD: 0.00%</div>
+                    </div>
+                </div>
+
+                <!-- Additional backtest stats -->
+                <div class="card glass bt-extra-stats" id="bt-extra-stats" style="display:none;">
+                    <div class="card-header">
+                        <h2>Extended Statistics</h2>
+                        <span class="tag">Quantitative</span>
+                    </div>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">Final Balance</span>
+                            <span class="stat-value" id="bt-final-balance">$0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Trades</span>
+                            <span class="stat-value" id="bt-total-count">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Avg Win</span>
+                            <span class="stat-value green" id="bt-avg-win">$0.00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Avg Loss</span>
+                            <span class="stat-value red" id="bt-avg-loss">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Chart & Table -->
+            <div class="right-panel">
+                <!-- Equity Chart -->
+                <div class="card glass chart-card">
+                    <div class="card-header">
+                        <h2>Account Equity Curve</h2>
+                        <span class="tag">Dynamic Chart</span>
+                    </div>
+                    <div class="chart-container-box">
+                        <canvas id="equity-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Backtest Trade Log -->
+                <div class="card glass history-card">
+                    <div class="card-header">
+                        <h2>Backtest Trade Executions</h2>
+                        <span class="total-badge" id="bt-total-badge">0 Trades</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Entry Time</th>
+                                    <th>Type</th>
+                                    <th>Lots</th>
+                                    <th>Entry</th>
+                                    <th>Exit</th>
+                                    <th>Result</th>
+                                    <th>P&L ($)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bt-history-rows">
+                                <tr><td colspan="7" class="empty-table-msg">Run a backtest simulation to view trade history.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
