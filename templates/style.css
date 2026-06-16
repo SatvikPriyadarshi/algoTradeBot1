@@ -611,19 +611,22 @@ select option {
 }
 
 .cal-day {
-    aspect-ratio: 1;
+    min-height: 48px;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    cursor: pointer;
+    cursor: default;
     transition: transform 0.2s, background 0.2s;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
 }
 
 .cal-day:hover {
-    transform: scale(1.12);
+    transform: scale(1.06);
     background: rgba(255, 255, 255, 0.06);
 }
 
@@ -631,7 +634,20 @@ select option {
     font-size: 10px;
     font-weight: 700;
     color: var(--text-muted);
+    line-height: 1;
 }
+
+.cal-day .day-pnl {
+    font-size: 9px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1.1;
+    text-align: center;
+    word-break: break-all;
+}
+
+.cal-day.profit .day-pnl { color: var(--green-color); }
+.cal-day.loss .day-pnl { color: var(--red-color); }
 
 .cal-day.profit {
     background: rgba(0, 230, 118, 0.15);
@@ -657,6 +673,12 @@ select option {
 
 .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
 .legend-dot.neutral { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); }
+
+.legend-note {
+    margin-left: auto;
+    font-size: 10px;
+    opacity: 0.85;
+}
 .legend-dot.win { background: var(--green-color); }
 .legend-dot.loss { background: var(--red-color); }
 
@@ -753,6 +775,50 @@ select option {
 .pos-direction-tag.sell {
     background: linear-gradient(135deg, #dc2626, #b91c1c);
 }
+
+.pos-price-ladder {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ladder-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: center;
+}
+
+.ladder-item .lbl {
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+}
+
+.ladder-item .val {
+    font-size: 14px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.ladder-item .meta {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.ladder-item.sl { border-color: rgba(239, 68, 68, 0.35); }
+.ladder-item.tp { border-color: rgba(34, 197, 94, 0.35); }
+.ladder-item.now {
+    border-color: rgba(99, 102, 241, 0.45);
+    background: rgba(99, 102, 241, 0.08);
+}
+.ladder-item.now .val { color: var(--accent-color); }
 
 .pos-grid {
     display: grid;

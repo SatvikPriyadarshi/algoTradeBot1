@@ -61,6 +61,7 @@ from services.trade_journal import (
     live_trades_only,
     is_live_trade,
 )
+from services.mt5_time import mt5_ts_to_str, mt5_ts_to_datetime, bar_time_to_str
 from services.anti_hedge import validate_new_entry, audit_mt5_book
 from symbol_specs import get_contract_size, get_symbol_specs, calc_gross_pnl_usd, tick_value_usd
 
@@ -156,7 +157,7 @@ def load_history():
         _rebuild_calendar_from_trades(global_state.trades)
         if dropped:
             logging.info(f"Removed {dropped} dry-run trade(s) from journal history.")
-            _persist_trade_history()
+        _persist_trade_history()
         logging.info(f"Loaded {len(global_state.trades)} live MT5 trade(s) from history.")
     except Exception as e:
         logging.error(f"Error loading trade history: {e}")
@@ -1071,7 +1072,9 @@ def _log_scan_round(results: list[dict], timeframe: str, mode: str) -> None:
         elif status == "BLOCKED":
             logging.info(f"  {sym:7s} {price_s} | {pipe} | BLOCKED — {r.get('reason', '')}")
         elif status == "ACTED":
-            logging.info(f"  {sym:7s} {price_s} | {pipe} | DONE — already traded this signal bar")
+            logging.info(f"  {sym:7s} {price_s} | {pipe} | SKIP — already processed this M15 bar (no re-entry)")
+        elif status == "FAILED":
+            logging.info(f"  {sym:7s} {price_s} | {pipe} | ORDER FAILED — {r.get('reason', 'MT5 rejected')}")
         elif status == "SKIP":
             logging.info(f"  {sym:7s} — | SKIP — {r.get('reason', '')}")
         else:
@@ -1195,9 +1198,13 @@ def _scan_symbol(
         if not hedge_ok:
             return {**base, "status": "BLOCKED", "action": signal.action, "reason": hedge_reason}
         if last_signal_bar.get(sym) == signal_time:
-            return {**base, "status": "ACTED", "action": signal.action}
+            return {
+                **base,
+                "status": "ACTED",
+                "action": signal.action,
+                "reason": "already processed this M15 bar",
+            }
 
-        last_signal_bar[sym] = signal_time
         entry_price = (
             float(current_bar["open"])
             if getattr(strategy, "entry_at_open", False)
@@ -1212,11 +1219,17 @@ def _scan_symbol(
             f">>> ALL STEPS PASS -> PLACE {signal.action} {sym} @ {entry_price:.5f} | "
             f"lot {lot_size:.2f} | {signal.reason}"
         )
+        opened = False
         if current_mode == "live":
-            _execute_live_order(sym, signal_payload, lot_size, risk_mgr)
+            opened = _execute_live_order(sym, signal_payload, lot_size, risk_mgr)
         else:
             _execute_dry_order(sym, signal_payload, lot_size, current_bar, risk_mgr, strategy)
+            opened = True
 
+        if not opened:
+            return {**base, "status": "FAILED", "action": signal.action, "reason": "MT5 order rejected"}
+
+        last_signal_bar[sym] = signal_time
         return {
             **base,
             "status": "TRADE",
@@ -1234,13 +1247,7 @@ def _scan_symbol(
 
 # ─── Live exit resolution (MT5 deal history) ────────────────────────────────
 def _bar_time_str(bar_time) -> str:
-    if bar_time is None:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    if isinstance(bar_time, pd.Timestamp):
-        return bar_time.strftime("%Y-%m-%d %H:%M:%S")
-    if isinstance(bar_time, datetime):
-        return bar_time.strftime("%Y-%m-%d %H:%M:%S")
-    return str(bar_time)[:19]
+    return bar_time_to_str(bar_time)
 
 
 def _deal_reason_label(reason: int) -> str:
@@ -1310,8 +1317,8 @@ def _sync_journal_from_mt5(symbols: list[str], days: int = 90) -> int:
         out_d = sorted(out_deals, key=lambda d: d.time)[-1]
         action = "BUY" if in_d.type == deal_type_buy else "SELL"
         reason = _deal_reason_label(getattr(out_d, "reason", -1))
-        entry_dt = datetime.fromtimestamp(in_d.time)
-        exit_dt = datetime.fromtimestamp(out_d.time)
+        entry_dt = mt5_ts_to_datetime(in_d.time)
+        exit_dt = mt5_ts_to_datetime(out_d.time)
         net_pnl = sum(float(d.profit) for d in pos_deals)
 
         trade = {
@@ -1319,8 +1326,8 @@ def _sync_journal_from_mt5(symbols: list[str], days: int = 90) -> int:
             "mode": "live",
             "timeframe": global_state.engine_timeframe,
             "strategy": global_state.strategy_name,
-            "entry_time": entry_dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "exit_time": exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "entry_time": mt5_ts_to_str(in_d.time),
+            "exit_time": mt5_ts_to_str(out_d.time),
             "action": action,
             "entry_price": float(in_d.price),
             "exit_price": float(out_d.price),
@@ -1380,10 +1387,9 @@ def _resolve_live_exit(sym: str, prev: dict) -> dict | None:
         return None
 
     deal = sorted(out_deals, key=lambda d: d.time)[-1]
-    exit_dt = datetime.fromtimestamp(deal.time)
     reason = _deal_reason_label(getattr(deal, "reason", -1))
     return {
-        "exit_time": exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        "exit_time": mt5_ts_to_str(deal.time),
         "exit_price": float(deal.price),
         "net_pnl": float(deal.profit),
         "result": reason,
@@ -1453,7 +1459,7 @@ def _manage_live_position(sym: str, current_bar, risk_mgr: RiskManager, contract
 
             entry_ts = existing.get("entry_time")
             if not entry_ts:
-                entry_ts = datetime.fromtimestamp(pos.time).strftime("%Y-%m-%d %H:%M:%S")
+                entry_ts = mt5_ts_to_str(pos.time)
 
             elapsed = ""
             entry_dt = parse_trade_time(entry_ts)
@@ -1607,17 +1613,37 @@ def _manage_dry_position(
 
 
 # ─── Order Execution ────────────────────────────────────────────────────────
-def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskManager):
-    """Send a real order to MT5."""
+def _filling_modes_for_symbol(sym: str) -> list[int]:
+    """Broker-supported filling modes for this symbol (IOC often fails on FX)."""
+    info = mt5.symbol_info(sym)
+    modes: list[int] = []
+    if info is not None:
+        filling = int(getattr(info, "filling_mode", 0) or 0)
+        if filling & getattr(mt5, "SYMBOL_FILLING_IOC", 2):
+            modes.append(mt5.ORDER_FILLING_IOC)
+        if filling & getattr(mt5, "SYMBOL_FILLING_FOK", 1):
+            modes.append(mt5.ORDER_FILLING_FOK)
+    for fallback in (
+        mt5.ORDER_FILLING_RETURN,
+        mt5.ORDER_FILLING_IOC,
+        mt5.ORDER_FILLING_FOK,
+    ):
+        if fallback not in modes:
+            modes.append(fallback)
+    return modes
+
+
+def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskManager) -> bool:
+    """Send a real order to MT5. Returns True if filled."""
     tick = mt5.symbol_info_tick(sym)
     if not tick:
         logging.error(f"Cannot get tick for {sym}")
-        return
+        return False
 
     order_type = mt5.ORDER_TYPE_BUY if signal['action'] == 'BUY' else mt5.ORDER_TYPE_SELL
     price = tick.ask if signal['action'] == 'BUY' else tick.bid
 
-    request = {
+    base_request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": sym,
         "volume": lot_size,
@@ -1629,11 +1655,19 @@ def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskM
         "magic": 987654,
         "comment": "QuantAlgo opt_mean_rev",
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
     }
 
     logging.info(f"LIVE ORDER -> {sym}: {signal['action']} {lot_size} lots @ {price}")
-    result = mt5.order_send(request)
+    result = None
+    for filling in _filling_modes_for_symbol(sym):
+        request = {**base_request, "type_filling": filling}
+        result = mt5.order_send(request)
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            break
+        if result and result.retcode == getattr(mt5, "TRADE_RETCODE_INVALID_FILL", 10030):
+            continue
+        break
+
     if result and result.retcode == mt5.TRADE_RETCODE_DONE:
         logging.info(f"Order filled for {sym}.")
         risk_mgr.log_trade_open()
@@ -1650,7 +1684,7 @@ def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskM
         if pos:
             with global_state.lock:
                 global_state.active_positions[sym] = {
-                    "entry_time": datetime.fromtimestamp(pos.time).strftime("%Y-%m-%d %H:%M:%S"),
+                    "entry_time": mt5_ts_to_str(pos.time),
                     "action": signal["action"],
                     "entry_price": pos.price_open,
                     "size": pos.volume,
@@ -1665,10 +1699,12 @@ def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskM
                     "last_bar_time": None,
                     "reason": signal.get("reason", ""),
                 }
-    else:
-        retcode = result.retcode if result else "None"
-        comment = result.comment if result else "No result"
-        logging.error(f"Order failed for {sym}. Code: {retcode} | {comment}")
+        return True
+
+    retcode = result.retcode if result else "None"
+    comment = result.comment if result else "No result"
+    logging.error(f"Order failed for {sym}. Code: {retcode} | {comment}")
+    return False
 
 
 def _execute_dry_order(sym: str, signal: dict, lot_size: float, current_bar, risk_mgr: RiskManager, strategy: BaseStrategy):

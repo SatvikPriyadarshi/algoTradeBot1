@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -60,7 +60,13 @@ def enrich_trade_record(trade: dict, *, default_timeframe: str = "M15") -> dict:
 
     duration_seconds = out.get("duration_seconds")
     if duration_seconds is None and entry_dt and exit_dt:
-        duration_seconds = max(0, int((exit_dt - entry_dt).total_seconds()))
+        raw_duration = int((exit_dt - entry_dt).total_seconds())
+        if raw_duration <= 0 and bars:
+            duration_seconds = int(bars) * timeframe_minutes(tf) * 60
+            exit_dt = entry_dt + timedelta(seconds=duration_seconds)
+            out["exit_time"] = exit_dt.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            duration_seconds = max(0, raw_duration)
     elif duration_seconds is None and bars is not None:
         duration_seconds = int(bars) * timeframe_minutes(tf) * 60
 

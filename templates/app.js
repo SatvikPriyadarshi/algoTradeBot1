@@ -227,6 +227,14 @@ function updateDashboard(data) {
 
                 var modeLabel = (data.mode === "live") ? "LIVE" : "PAPER";
                 var modeCls = (data.mode === "live") ? "live" : "dry_run";
+                var nowPx = (data.last_prices && data.last_prices[sym] != null)
+                    ? Number(data.last_prices[sym])
+                    : null;
+                var slPx = Number(pos.sl);
+                var tpPx = Number(pos.tp);
+                var entryPx = Number(pos.entry_price);
+                var toTp = nowPx != null ? priceDistLabel(sym, nowPx, tpPx) : "";
+                var toSl = nowPx != null ? priceDistLabel(sym, nowPx, slPx) : "";
 
                 posHTML += '<div class="position-details">' +
                     '<div class="pos-header-row">' +
@@ -234,11 +242,16 @@ function updateDashboard(data) {
                     '<span class="mode-pill ' + modeCls + '">' + modeLabel + '</span>' +
                     '<div class="pos-direction-tag ' + (isBuy ? '' : 'sell') + '">' + pos.action + '</div>' +
                     '</div>' +
+                    '<div class="pos-price-ladder">' +
+                    '<div class="ladder-item sl"><span class="lbl">SL</span><span class="val">' + formatPosPrice(sym, slPx) + '</span>' +
+                    (toSl ? '<span class="meta">' + toSl + ' away</span>' : '') + '</div>' +
+                    '<div class="ladder-item now"><span class="lbl">Now</span><span class="val">' + formatPosPrice(sym, nowPx) + '</span></div>' +
+                    '<div class="ladder-item tp"><span class="lbl">TP</span><span class="val">' + formatPosPrice(sym, tpPx) + '</span>' +
+                    (toTp ? '<span class="meta">' + toTp + ' away</span>' : '') + '</div>' +
+                    '</div>' +
                     '<div class="pos-grid">' +
-                    '<div class="pos-item"><span class="lbl">Entry</span><span class="val">' + Number(pos.entry_price).toFixed(5) + '</span></div>' +
+                    '<div class="pos-item"><span class="lbl">Entry</span><span class="val">' + formatPosPrice(sym, entryPx) + '</span></div>' +
                     '<div class="pos-item"><span class="lbl">Size</span><span class="val">' + Number(pos.size).toFixed(2) + '</span></div>' +
-                    '<div class="pos-item"><span class="lbl">SL</span><span class="val">' + Number(pos.sl).toFixed(5) + '</span></div>' +
-                    '<div class="pos-item"><span class="lbl">TP</span><span class="val">' + Number(pos.tp).toFixed(5) + '</span></div>' +
                     '<div class="pos-item"><span class="lbl">Open for</span><span class="val">' + (pos.elapsed_label || "—") + '</span></div>' +
                     '<div class="pos-item"><span class="lbl">Bars held</span><span class="val">' + (pos.bars_held || 0) + '</span></div>' +
                     '</div>' +
@@ -343,6 +356,15 @@ function updatePipelineUI(rules) {
 }
 
 // ─── Calendar Heatmap ───────────────────────────────────────────────────────
+function formatCalDayPnl(val) {
+    var n = Number(val) || 0;
+    var sign = n >= 0 ? "+" : "-";
+    var abs = Math.abs(n);
+    if (abs >= 1000) return sign + "$" + (abs / 1000).toFixed(1) + "k";
+    if (Number.isInteger(abs)) return sign + "$" + abs.toFixed(0);
+    return sign + "$" + abs.toFixed(2);
+}
+
 function drawCalendar(calendarData) {
     var grid = document.getElementById("calendar-grid-container");
     if (!grid) return;
@@ -354,10 +376,11 @@ function drawCalendar(calendarData) {
         d.setDate(today.getDate() - i);
         var dateStr = formatDateKey(d);
         var dayPnl = calendarData[dateStr] || 0.0;
+        var hasPnl = Math.abs(dayPnl) >= 0.01;
 
         var dayBox = document.createElement("div");
         dayBox.className = "cal-day";
-        dayBox.title = dateStr + ": " + (dayPnl === 0 ? "No trade" : (dayPnl > 0 ? "+" : "") + "$" + dayPnl.toFixed(2));
+        dayBox.title = dateStr + ": " + (hasPnl ? formatCalDayPnl(dayPnl) : "No closed trades");
 
         if (dayPnl > 0) dayBox.classList.add("profit");
         else if (dayPnl < 0) dayBox.classList.add("loss");
@@ -366,8 +389,32 @@ function drawCalendar(calendarData) {
         dayNum.className = "day-num";
         dayNum.innerText = d.getDate();
         dayBox.appendChild(dayNum);
+
+        if (hasPnl) {
+            var pnlEl = document.createElement("span");
+            pnlEl.className = "day-pnl";
+            pnlEl.innerText = formatCalDayPnl(dayPnl);
+            dayBox.appendChild(pnlEl);
+        }
+
         grid.appendChild(dayBox);
     }
+}
+
+// ─── Price formatting ───────────────────────────────────────────────────────
+function formatPosPrice(sym, val) {
+    if (val == null || val === "" || isNaN(Number(val))) return "—";
+    var n = Number(val);
+    if (sym === "XAUUSD" || sym === "XAGUSD") return n.toFixed(2);
+    if (sym.indexOf("JPY") >= 0) return n.toFixed(3);
+    return n.toFixed(5);
+}
+
+function priceDistLabel(sym, from, to) {
+    if (from == null || to == null || isNaN(from) || isNaN(to)) return "";
+    var mult = (sym === "XAUUSD" || sym === "XAGUSD") ? 1 : (sym.indexOf("JPY") >= 0 ? 100 : 10000);
+    var pts = (to - from) * mult;
+    return (pts >= 0 ? "+" : "") + pts.toFixed(1) + " pts";
 }
 
 // ─── Trade Journal ──────────────────────────────────────────────────────────
