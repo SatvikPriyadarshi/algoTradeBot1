@@ -6,9 +6,11 @@ import os
 
 from strategies.base import BaseStrategy
 from strategies.opt_mean_rev import OptMeanRevStrategy
+from strategies.holy_grail import HolyGrailStrategy
 
 _REGISTRY: dict[str, type[BaseStrategy]] = {
     OptMeanRevStrategy.name: OptMeanRevStrategy,
+    HolyGrailStrategy.name: HolyGrailStrategy,
 }
 
 

@@ -24,7 +24,7 @@ def _int(key: str, default: int) -> int:
 
 
 def get_symbols() -> list[str]:
-    raw = os.getenv("SYMBOLS", "GBPUSD,AUDUSD,EURUSD,USDCAD,USDCHF,XAUUSD")
+    raw = os.getenv("SYMBOLS", "GBPUSD,EURUSD,XAUUSD")
     return [s.strip().upper() for s in raw.split(",") if s.strip()]
 
 
@@ -57,16 +57,15 @@ def get_risk_settings() -> dict:
         "mt5_server": os.getenv("MT5_SERVER", "").strip(),
         "mt5_auto_login": get_mt5_credentials() is not None,
         "risk_per_trade": _float("RISK_PER_TRADE", 50.0),
-        # Backtest simulation only — live uses MT5 balance / margin / leverage
-        "backtest_trade_capital": _float("BACKTEST_TRADE_CAPITAL", _float("TRADE_CAPITAL", 500.0)),
-        "backtest_leverage": _float("BACKTEST_LEVERAGE", _float("LEVERAGE", 100.0)),
+        # Backtest values are explicitly passed via UI payload; defaults if missing:
+        "backtest_trade_capital": 500.0,
+        "backtest_leverage": 100.0,
         "max_daily_loss": _float("MAX_DAILY_LOSS", 500.0),
         "max_trades_per_day": _int("MAX_TRADES_PER_DAY", 0),
         "max_concurrent_trades": _int("MAX_CONCURRENT_TRADES", 5),
         "commission_per_lot": _float("COMMISSION_PER_LOT", 7.0),
         "slippage_ticks": _float("SLIPPAGE_TICKS", 2.0),
         "symbols": get_symbols(),
-        "opt_max_hold_bars": _int("OPT_MAX_HOLD_BARS", 20),
     }
 
 

@@ -1,5 +1,5 @@
 """
-Quant Algo Engine — Main execution server.
+Dynamic Oracle Engine — Main execution server.
 Manages MT5 connection, multi-symbol scanning, trade execution, and WebSocket dashboard.
 
 Architecture:
@@ -257,7 +257,7 @@ async def lifespan(app):
     yield
     task.cancel()
 
-app = FastAPI(title="Quant Algo Engine", lifespan=lifespan)
+app = FastAPI(title="Dynamic Oracle Engine", lifespan=lifespan)
 
 
 # ─── API Schemas ─────────────────────────────────────────────────────────────
@@ -394,7 +394,7 @@ def export_trades_csv():
 @app.get("/api/strategies")
 def list_strategy_plugins():
     from strategies.registry import list_strategies
-    return {"active": os.getenv("STRATEGY", "opt_mean_rev"), "available": list_strategies()}
+    return {"active": os.getenv("STRATEGY", "holygrail"), "available": list_strategies()}
 
 
 @app.get("/api/symbol-specs/{symbol}")
@@ -1653,7 +1653,7 @@ def _execute_live_order(sym: str, signal: dict, lot_size: float, risk_mgr: RiskM
         "tp": signal['tp'],
         "deviation": 20,
         "magic": 987654,
-        "comment": "QuantAlgo opt_mean_rev",
+        "comment": "DynamicOracle holygrail",
         "type_time": mt5.ORDER_TIME_GTC,
     }
 
@@ -1744,7 +1744,7 @@ def _execute_dry_order(sym: str, signal: dict, lot_size: float, current_bar, ris
 
 # ─── Entrypoint ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Quant Algo Engine")
+    parser = argparse.ArgumentParser(description="Dynamic Oracle Engine")
     parser.add_argument("--timeframe", type=str, default=None, help="Timeframe (default: ENGINE_TIMEFRAME from .env)")
     default_mode = get_engine_mode()
     parser.add_argument("--mode", type=str, default=default_mode, choices=["dry_run", "live"])

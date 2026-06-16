@@ -43,8 +43,8 @@ class StrategyBacktester:
         self.slippage_ticks = float(os.getenv("SLIPPAGE_TICKS", 2.0))
         self.spread_multiplier = spread_multiplier
         self.risk_per_trade_cash = risk_per_trade_cash if risk_per_trade_cash is not None else float(os.getenv("RISK_PER_TRADE", 50))
-        self.trade_capital_usd = trade_capital_usd if trade_capital_usd is not None else float(os.getenv("BACKTEST_TRADE_CAPITAL", os.getenv("TRADE_CAPITAL", 500)))
-        self.leverage = leverage if leverage and leverage > 0 else float(os.getenv("BACKTEST_LEVERAGE", os.getenv("LEVERAGE", 100)))
+        self.trade_capital_usd = trade_capital_usd if trade_capital_usd is not None else 500.0
+        self.leverage = leverage if leverage and leverage > 0 else 100.0
         self.symbol_contract_size = resolved_contract
 
         self.risk_mgr = RiskManager(
@@ -72,7 +72,7 @@ class StrategyBacktester:
         df = pd.read_csv(data_path)
         df["time"] = pd.to_datetime(df["time"])
         if (
-            self.strategy.name == "opt_mean_rev"
+            self.strategy.name == "holygrail"
             and data_path.upper().endswith("_M5.CSV")
         ):
             df = (

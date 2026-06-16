@@ -33,9 +33,9 @@ function switchTab(tabName) {
 
 function strategyDisplayName(name) {
     var labels = {
-        opt_mean_rev: "opt_mean_rev · M15 mean reversion"
+        holygrail: "holygrail · M15 Dynamic Oracle"
     };
-    return labels[name] || name || "opt_mean_rev";
+    return labels[name] || name || "holygrail";
 }
 
 // ─── WebSocket ──────────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ function updateDashboard(data) {
     }
     var cfgBadge = document.getElementById("config-tf-badge");
     if (cfgBadge) {
-        cfgBadge.innerText = (data.timeframe || "M15") + " · " + (data.strategy || "opt_mean_rev");
+        cfgBadge.innerText = (data.timeframe || "M15") + " · " + (data.strategy || "holygrail");
     }
 
     // ── Pipeline ──
